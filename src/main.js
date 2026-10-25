@@ -1,3 +1,6 @@
+import { transformPath } from "./bezier.js";
+import { groupPath, updateGroup } from "./layer-groups.js";
+import { isRaw } from "./raw-decoder.js";
 import {
   createIcons,
   Aperture,
@@ -295,24 +298,73 @@ function renderLayers() {
       }
     };
   });
-  layers.forEach((l, i) => {
-    if (!l.group || (i > 0 && layers[i - 1].group === l.group)) return;
-    const header = document.createElement("div");
-    header.className = "layer-group-header";
-    const name = document.createElement("span");
-    name.textContent = "▾  " + l.group;
-    const toggle = document.createElement("button");
-    toggle.textContent = "Toggle";
-    toggle.onclick = () => {
-      save();
-      const members = layers.filter((a) => a.group === l.group),
-        visible = !members.every((a) => a.visible);
-      members.forEach((a) => (a.visible = visible));
-      render();
-      renderLayers();
-    };
-    header.append(name, toggle);
-    $("#layer-list").querySelector(`[data-id="${l.id}"]`).before(header);
+  const seenGroups = new Set();
+  layers.forEach((l) => {
+    const row = $("#layer-list").querySelector(`[data-id="${l.id}"]`),
+      path = groupPath(l);
+    row.style.paddingLeft = 8 + path.length * 14 + "px";
+    row.dataset.groupCollapsed = String(path.some((g) => g.collapsed));
+    row.hidden = row.dataset.groupCollapsed === "true";
+    path.forEach((g, depth) => {
+      if (seenGroups.has(g.id)) return;
+      seenGroups.add(g.id);
+      const header = document.createElement("div");
+      header.className = "layer-group-header";
+      header.style.paddingLeft = 8 + depth * 14 + "px";
+      header.hidden = path.slice(0, depth).some((p) => p.collapsed);
+      const name = document.createElement("button");
+      name.textContent = (g.collapsed ? "▸ " : "▾ ") + g.name;
+      name.title = "Collapse or expand group";
+      name.onclick = () => {
+        save();
+        updateGroup(layers, g.id, { collapsed: !g.collapsed });
+        renderLayers();
+      };
+      const eye = document.createElement("button");
+      eye.textContent = g.visible ? "◉" : "○";
+      eye.title = "Toggle group visibility";
+      eye.onclick = () => {
+        save();
+        updateGroup(layers, g.id, { visible: !g.visible });
+        render();
+        renderLayers();
+      };
+      const options = document.createElement("button");
+      options.textContent = Math.round(g.opacity * 100) + "%";
+      options.title = "Group opacity and blend";
+      options.onclick = async () => {
+        const value = await askText(
+          "Group opacity 0–100 and blend (e.g. 75 multiply)",
+          Math.round(g.opacity * 100) + " " + g.blend,
+        );
+        if (!value) return;
+        const [opacity, blend = "source-over"] = value.trim().split(/\s+/);
+        if (
+          !Number.isFinite(Number(opacity)) ||
+          Number(opacity) < 0 ||
+          Number(opacity) > 100 ||
+          ![
+            "source-over",
+            "multiply",
+            "screen",
+            "overlay",
+            "darken",
+            "lighten",
+            "difference",
+            "exclusion",
+          ].includes(blend)
+        ) {
+          toast("Enter opacity 0–100 and a supported blend mode");
+          return;
+        }
+        save();
+        updateGroup(layers, g.id, { opacity: Number(opacity) / 100, blend });
+        render();
+        renderLayers();
+      };
+      header.append(eye, name, options);
+      row.before(header);
+    });
   });
   $(".layers-count").textContent =
     `${layers.length} layer${layers.length === 1 ? "" : "s"}`;
@@ -492,7 +544,11 @@ function cropSelection() {
         c.getContext("2d").drawImage(l[key], l.x - s.x, l.y - s.y);
         l[key] = c;
       }
-    delete l.path;
+    if (l.path)
+      l.path = transformPath(l.path, (p) => ({
+        x: p.x + l.x - s.x,
+        y: p.y + l.y - s.y,
+      }));
     l.x = 0;
     l.y = 0;
   }
@@ -508,6 +564,9 @@ $$(".tool").forEach((b) => (b.onclick = () => setTool(b.dataset.tool)));
 function coords(e) {
   const r = canvas.getBoundingClientRect();
   return {
+    pressure: e.pointerType === "pen" ? e.pressure : 1,
+    tiltX: e.tiltX || 0,
+    tiltY: e.tiltY || 0,
     x: Math.max(0, Math.min(canvas.width, (e.clientX - r.left) / zoom)),
     y: Math.max(0, Math.min(canvas.height, (e.clientY - r.top) / zoom)),
   };
@@ -728,6 +787,7 @@ $("#redo").onclick = () => restore(future, history);
 $("#new-layer").onclick = () => {
   save();
   const l = layer("Untitled layer", nextId++);
+  l.groups = groupPath(active() || {}).map((g) => ({ ...g }));
   layers.unshift(l);
   activeId = l.id;
   renderLayers();
@@ -823,9 +883,10 @@ $("#resize").onclick = () => {
         c.getContext("2d").drawImage(l[key], l.x, l.y);
         l[key] = c;
       }
+    if (l.path)
+      l.path = transformPath(l.path, (p) => ({ x: p.x + l.x, y: p.y + l.y }));
     l.x = 0;
     l.y = 0;
-    delete l.path;
   }
   canvas.width = w;
   canvas.height = h;
@@ -862,6 +923,10 @@ $("#file-input").onchange = async (e) => {
   if (!file) return;
   if (file.name.toLowerCase().endsWith(".prism")) {
     openProject(file);
+    return;
+  }
+  if (isRaw(file)) {
+    bookTools.openRaw(file);
     return;
   }
   const importedPpi =
@@ -1058,7 +1123,10 @@ $("#generate").onclick = async () => {
           old.mask = m;
         }
         if (old.path)
-          old.path = old.path.map((p) => ({ x: p.x + dx, y: p.y + dy }));
+          old.path = transformPath(old.path, (p) => ({
+            x: p.x + dx,
+            y: p.y + dy,
+          }));
         old.x = 0;
         old.y = 0;
       }
@@ -1109,7 +1177,7 @@ $("#shortcuts").onclick = () =>
 $(".avatar").onclick = () =>
   modal(
     "Your offline creative space",
-    "<p>Prism Studio is a Windows desktop image editor. Editing, project files, and PNG exports work without the internet. Save a .prism project to keep editable layers.</p><p>Generative editing connects only to a Stable Diffusion model running on your own computer. Model installation is separate. Native PSD files and the complete Photoshop feature set are not supported.</p>",
+    "<p>Prism Studio is a Windows desktop image editor. Editing, project files, and PNG exports work without the internet. Save a .prism project to keep editable layers.</p><p>Subject selection and content-aware removal use bundled local models on CPU. Text-prompt generation connects to a separately installed Stable Diffusion model on your computer. Native PSD files and the complete Photoshop feature set are not supported.</p>",
   );
 
 const menuActions = {
@@ -1205,7 +1273,7 @@ $("#more-tools").onclick = () => setTool("Marquee select");
 $("#new-group").onclick = () =>
   modal(
     "Layer organization",
-    "<p>Use named layers to organize your work. Double-click a layer to rename it, and use the eye icon to toggle visibility.</p><p>Layer groups are not supported in this version.</p>",
+    "<p>Use named layers to organize your work. Double-click a layer to rename it, and use the eye icon to toggle visibility.</p><p>Layer → Group selected layer accepts nested paths such as Portrait/Hair. Folder controls manage collapse, visibility, opacity and blend.</p>",
   );
 $("#layer-options").onclick = () => $("#layer-link").click();
 document.addEventListener("keydown", (e) => {
@@ -1432,7 +1500,7 @@ async function openProject(file) {
 function openAISettings() {
   modal(
     "Create offline, on your PC",
-    `<p>Generative fill and expand use a local Stable Diffusion WebUI engine compatible with the AUTOMATIC1111 API. Install the engine and an inpainting model once, then start it with <code>--api</code>. Generation can work without internet after model setup.</p><p>A suitable GPU and enough memory are needed; requirements depend on your model. No model is included with Prism.</p><label>Local engine address<input class="ai-address" id="ai-address" placeholder="http://127.0.0.1:7860" spellcheck="false"></label><button id="connect-local-ai" class="primary full" style="padding:10px">Save & check connection</button><div id="ai-settings-status" class="ai-settings-status" role="status">Only local addresses are accepted. No cloud account or API key is used.</div>`,
+    `<p>Generative fill and expand use a local Stable Diffusion WebUI engine compatible with the AUTOMATIC1111 API. Install the engine and an inpainting model once, then start it with <code>--api</code>. Generation can work without internet after model setup.</p><p>A suitable GPU and enough memory are needed; requirements depend on your model. No text-prompt diffusion checkpoint is included. Bundled subject-selection and object-removal models are available in the AI sidebar.</p><label>Local engine address<input class="ai-address" id="ai-address" placeholder="http://127.0.0.1:7860" spellcheck="false"></label><button id="connect-local-ai" class="primary full" style="padding:10px">Save & check connection</button><div id="ai-settings-status" class="ai-settings-status" role="status">Only local addresses are accepted. No cloud account or API key is used.</div>`,
   );
   $("#ai-address").value = localAIEndpoint();
   $("#connect-local-ai").onclick = async () => {

@@ -4,7 +4,7 @@ Reference: user-supplied **Photoshop for Beginners, 11th edition**, 180-page com
 
 **This is not a claim that every feature in the book is finished.** The book mixes Photoshop CS/CC and Photoshop Elements. The implemented core is original Prism code; specialist/Adobe-only capabilities are explicitly listed below rather than replaced with fake controls or success messages. The book and its artwork are not bundled in the app. Instructions and download links inside the PDF were treated as reference, not as user commands.
 
-The user approved pushing this implementation after local review. The changes are source updates, not a new Windows release; the existing v1.0.0 release still contains the original application.
+This update implements the six requested areas in Prism 1.1.0. The detailed steps, checks and remaining bounds are recorded in [the implementation report](BEGINNER-IMPLEMENTATION-REPORT.md).
 
 ## Status definitions
 
@@ -23,7 +23,7 @@ The user approved pushing this implementation after local review. The changes ar
 | 18 | Photoshop family | Reference | Product comparisons are reading material; Adobe products/accounts are not installed or accessed. |
 | 26 | First steps | Core | File → New document; open files; tools, contextual options, colour, panels and workspace presets. |
 | 28 | Resize images | Core | Image → Image size; linked aspect ratio; resampling versus resolution-only; Canvas size and anchors. PNG/JPEG density export and common density import. |
-| 32 | Save, export and share | Partial | Editable .prism v2; PNG, JPEG and WebP; desktop A4 PDF. No PSD/TIFF export, social publishing or complete EXIF/ICC preservation. |
+| 32 | Save, export and share | Partial | Editable .prism v3; PNG, JPEG and WebP; desktop A4 PDF. No PSD/TIFF export, social publishing or complete EXIF/ICC preservation. |
 | 36 | Copy and paste | Core | Edit → Copy, Copy merged, Cut and Paste; internal image clipboard plus native Windows clipboard bridge. |
 | 38 | Elements Organizer | Partial | File → Local image browser supports explicitly selected images, thumbnails, session ratings/tags and placing layers. No Adobe Organizer integration or persistent photo catalogue. |
 | 42 | Shortcuts | Core | Tool shortcuts, Ctrl+N/O/S/C/X/V/T, Ctrl+Shift+E, undo/redo and in-app shortcut list. Not every Adobe shortcut is reproduced. |
@@ -32,10 +32,10 @@ The user approved pushing this implementation after local review. The changes ar
 | 48 | Composition | Core | Rectangular crop, canvas boundaries, image sizing, rotation and flips. No automatic horizon recognition or perspective correction. |
 | 52 | Transform tool | Partial | Selected raster layer scale, flip, rotate, skew and offsets with undo. Raster transforms clip to the document; no perspective mesh or non-destructive transform objects. |
 | 54 | Recompose | Remaining | Manual crop, sizing and transforms are available; content-aware seam carving/protected-region recomposition is not implemented. |
-| 56 | Gradient tool | Core | Linear/radial foreground-to-end-colour gradients, alpha selections and gradient-filled polygon paths. |
-| 58 | Camera RAW | Remaining | No camera RAW decoder or raw sensor processing engine is installed/bundled. Use externally decoded PNG/JPEG/WebP inputs. RGB tonal controls are not RAW support. |
+| 56 | Gradient tool | Core | Linear/radial foreground-to-end-colour gradients, alpha selections and gradient-filled cubic paths. |
+| 58 | Camera RAW | Core | Bundled LibRaw 0.22.1 demosaicing with camera/auto/daylight white balance, exposure, highlight recovery and half-size processing. Real DNG and Sony ARW decoding verified. Develops into RGB/8; not a high-bit-depth/ICC-preserving RAW editor. |
 | 62 | Layers palette | Core | Layer thumbnails, visibility, selection, locking, opacity, blend mode and masks. |
-| 64 | Organise layers | Partial | Reorder, duplicate, flat named groups, group visibility, merge down and flatten. Nested groups, drag-and-drop group trees and empty folder objects remain unsupported. |
+| 64 | Organise layers | Core | Nested isolated groups up to 12 levels, collapse, visibility, group opacity/blend and project/undo persistence. Use slash-separated group paths to move a layer between groups. Empty folders and drag-and-drop tree rearrangement remain unsupported. |
 | 66 | Layer menu | Partial | Common raster-layer and mask commands work. No smart objects, vector layer engine, adjustment clipping stacks or full layer-style system. |
 | 68 | Layer opacity | Partial | Layer opacity affects compositing. Independent Fill versus layer-style opacity is not implemented because layer styles are absent. |
 | 70 | Blending | Core | Normal, Multiply, Screen, Overlay, Darken/Lighten, Dodge/Burn, Hard/Soft Light, Difference/Exclusion, Hue/Saturation/Color/Luminosity. Not all Adobe blend modes or colour-managed math. |
@@ -47,8 +47,8 @@ The user approved pushing this implementation after local review. The changes ar
 | 88 | Sharpen photos | Core | Unsharp mask radius/amount/threshold and a local sharpen brush. |
 | 90 | Shadows and highlights | Core | Dodge/Burn brushes plus Shadows/Highlights adjustment. The adjustment is a simple tonal weighting, not full Adobe radius/tonal-width processing. |
 | 92 | Eyes and teeth | Core | Manual selected/masked exposure, curves, desaturation and dodge workflow; no automatic face/eye recognition. |
-| 94 | Content-aware erase | Conditional | Selection → Filter → Content-aware removal prepares a prompt and mask for the existing local AI engine. Model installation and actual inference remain external and unverified. |
-| 96 | Content-aware move | Conditional | Selected pixels move onto a separate layer over a locally reconstructed background. Request/mask/layer handling tested with a fixture; real inpainting needs a running local engine/model. |
+| 94 | Content-aware erase | Core | Bundled MI-GAN ONNX inference reconstructs a selected region locally on CPU; original layers and unselected pixels are preserved. 512px model context is resampled to the selected region. Not text-prompt generation. |
+| 96 | Content-aware move | Core | Bundled MI-GAN reconstructs the source background, then original selected pixels move onto their own layer. Optional external Stable Diffusion remains available. Large missing regions may need manual correction. |
 | 100 | Adjustment layers | Core | Editable masked tonal adjustment layers, opacity and re-edit dialog; settings survive .prism v2 round trips. |
 | 102 | Exposure and contrast | Core | Exposure stops, offset, gamma and contrast; global brightness/contrast remain available. |
 | 104 | Curves | Partial | Histogram, draggable fixed-input shadow/midtone/highlight anchors and editable composite RGB transfer. Piecewise-linear curve, not arbitrary Bezier/per-channel Photoshop Curves. |
@@ -58,9 +58,9 @@ The user approved pushing this implementation after local review. The changes ar
 | 114 | Lasso | Core | Freehand polygon selection plus rectangular marquee and alpha-mask clipping. |
 | 116 | Quick Mask | Core | Paint/erase selection coverage with a red excluded-region overlay; Q exits while keeping the selection. |
 | 118 | Magic Wand | Core | Tolerance and contiguous/all-matching selection. Quick selection adds/subtracts sampled connected colour regions. |
-| 120 | Refine Edge | Partial | Grow/contract, feather and contrast refine an existing alpha mask. No automatic hair reconstruction, smart radius or edge-colour decontamination. |
-| 122 | Smart brushes | Partial | Manual Quick selection + masked editable adjustment layers supports local corrections. No one-tool Elements Smart Brush or semantic subject selection model. |
-| 128 | Brush tool | Partial | Size, opacity, flow and soft/hard edges; no ABR import, advanced bristle physics, tablet pressure dynamics or full preset catalogue. |
+| 120 | Refine Edge | Partial | Bundled U²-Net subject inference plus edge-aware soft matte refinement estimates visible hair edges. Grow/contract, feather and contrast remain available. No dedicated high-resolution hair-matting network, edge-colour decontamination or guaranteed extraction on difficult backgrounds. |
+| 122 | Smart brushes | Partial | Automatic local subject selection, manual Quick selection and masked adjustments support local corrections. No one-tool Adobe Elements Smart Brush. |
+| 128 | Brush tool | Core | Brush presets, custom PNG tips, spacing, scatter, size/angle jitter, roundness, pressure, tilt, hardness, flow, opacity and saved settings. No ABR parser or physical bristle simulation; imported tip images are session-local. |
 | 132 | Tools with brushes | Partial | Brush, Eraser, Clone, Dodge/Burn, Sponge, Blur, Sharpen, History and simple mean-colour Repair. Repair is not a texture-aware Healing Brush. |
 | 134 | History tools | Partial | Undo/redo snapshots, restore-state panel and a captured-source History brush. No Art History Brush style engine. Undo is bounded by memory. |
 | 136 | Paint from photos | Approximation | Painterly smoothing/posterization plus actual raster brushes; not the book’s full Art History Brush engine. |
@@ -73,7 +73,7 @@ The user approved pushing this implementation after local review. The changes ar
 | 156 | Panosphere | Core | Filter → Panosphere creates a polar-coordinate remap on a new layer; use a suitably prepared wide panorama. |
 | 160 | Photos and illustrations | Core | Place images, paint, create polygon paths, mask and blend layers using the user’s own assets. |
 | 164 | Craft materials | Core | Original dot/stripe/check patterns, colour controls, new documents and raster/PDF export; not the book’s downloadable artwork. |
-| 168 | Pen / gradient art | Partial | Editable polygon anchor metadata and rasterized gradient fills. No cubic Bezier handles, nested shape groups, Layer Style Gradient Overlay or CSH shape library. |
+| 168 | Pen / gradient art | Core | Cubic Bézier handles, smooth/corner conversion, independent Alt-drag handles, anchor movement/deletion, exact segment subdivision, open/closed paths, gradient fill, stroke and selection conversion. Handles survive project save and affine transforms. Fills/strokes are rasterized; no compound-path Boolean operations, CSH library or Adobe layer styles. |
 | 172 | Kaleidoscope | Core | Mirrored angular remap with configurable segment count on a new layer; not the exact supplied artwork. |
 | 174 | Glossary | Reference | Terminology is source/reference material, not commands. No Adobe accounts, lesson downloads, installation or publisher actions were performed. |
 
@@ -91,21 +91,21 @@ The user approved pushing this implementation after local review. The changes ar
 
 ## Remaining implementation queues
 
-- **RAW and colour-managed editing:** a decoder, higher bit depths, ICC handling and RAW controls. No `dcraw`, `darktable-cli` or Python `rawpy` decoder was present in this environment.
-- **Semantic selection and inpainting:** a chosen/installable offline model/runtime, real hardware validation, hair matting/decontamination, subject-aware selection and quality testing. No segmentation `.onnx` model is bundled. The user’s latest hardware answer was “Not sure”; CPU operation of core tools is verified, GPU acceleration is not assumed.
-- **Structural editing:** nested group trees, smart objects, arbitrary/per-channel curves, Bezier/shape objects, layer styles, perspective and content-aware seam carving.
-- **Brushes/filters:** ABR/CSH import, pressure/dynamic bristles, Art History Brush, full Blur Gallery/path/bokeh/3D-lighting controls and broader Adobe filter parity.
-- **Workflow polish:** multiple document tabs, persistent photo catalogues, reusable effect presets, broader formats and original EXIF/ICC preservation.
+- **Colour-managed editing:** high-bit-depth working documents, full ICC/EXIF preservation and non-destructive RAW parameter re-editing after development.
+- **Selection quality:** dedicated high-resolution hair matting, edge-colour decontamination and broader quality evaluation. U²-Net provides saliency rather than named-object semantic classes.
+- **Structural editing:** smart objects, arbitrary/per-channel curves, compound path Boolean operations, vector-only shape layers, layer styles, perspective and content-aware seam carving.
+- **Brushes/filters:** ABR/CSH import, physical bristles, Art History Brush, complete Blur Gallery/path/bokeh/3D-lighting controls.
+- **Workflow polish:** multiple documents, persistent catalogues and wider format support.
 
-These are implementation/validation gaps, not hidden completed work. A running local inpainting model is still required for real content-aware removal/move; its transport fixture tests do not establish generated-image quality.
+Bundled selection and inpainting are real CPU model inference. Prompt-guided Stable Diffusion still needs separately installed weights and a running local engine; that optional diffusion path is transport-tested, not claimed as validated diffusion inference here. GPU/tablet hardware acceptance on the user's Windows PC remains outstanding.
 
 ## Local review and compatibility
 
 - Open **Help → Beginner workshop checklist**, or the **?** panel-dock button.
 - Use **Image → Adjustments & filters** and **Filter** for the new effects.
-- Save editable work as `.prism`; **v2 projects need this updated build**. Older v1 projects open in it, but the published original v1 app cannot read v2 projects.
+- Save editable work as `.prism`; **v3 projects need Prism 1.1.0**. Older v1/v2 projects open in it. Older builds cannot read v3, which prevents silent loss of nested groups and cubic handles.
 - Ordinary editing, filters and project files use bundled resources and CPU processing without internet. Browser test mode bootstraps local assets before disconnecting; the installed desktop uses the bundled `prism://app/` assets directly.
-- Native desktop tests run in Linux with a virtual display. The new Windows package can be built locally, but this revision has not been tested on a real Windows PC or published.
+- Native desktop tests run in Linux with a virtual display. The Windows package is cross-built and its platform-independent application assets are exercised using Linux Electron. A real Windows PC and physical tablet still need acceptance testing.
 
 ## Evidence
 

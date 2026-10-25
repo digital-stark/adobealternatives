@@ -1,7 +1,5 @@
-Prism Studio is a standalone offline image editor for Windows 10/11 x64.
+Prism Studio 1.1.0 adds offline camera RAW development, automatic subject selection with soft hair-edge refinement, brush dynamics and PNG tips, nested isolated layer groups, cubic Bézier editing, and real bundled MI-GAN inpainting.
 
-Download the **Portable-x64.exe** asset below and open it on Windows. No installation, browser, Node.js, account, or internet connection is needed for ordinary editing. Fonts, icons, and the starter image are bundled.
+U²-Net, MI-GAN, ONNX Runtime and LibRaw ship locally. Selection/removal do not need Python, a server, GPU, API key or internet. Text-prompt Stable Diffusion remains an optional separate local engine.
 
-Features include painting, selections, layers, text, image adjustments, undo/redo, editable .prism project files, and PNG export. Generative fill and expand connect only to a local Stable Diffusion WebUI engine; the engine and model must be installed separately. No diffusion model is included.
-
-This initial version does not provide full Photoshop parity or PSD support. The executable is unsigned. See README.md for supported features and local AI setup.
+Windows 10/11 x64 portable application. Extract/run the executable and save editable work as .prism v3. Older v1/v2 projects still open. Check SHA256SUMS.txt after downloading. This is an unsigned independent editor, not complete Photoshop parity. RAW develops to RGB/8; fine hair and generated regions require inspection. See docs/ADVANCED-TOOLS.md for controls, limits and model/license information.

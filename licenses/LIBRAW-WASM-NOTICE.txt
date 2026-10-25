@@ -1,0 +1,14 @@
+LibRaw-Wasm 1.6.0
+Author: ybouane; contributors listed in the upstream repository.
+Package license declaration: ISC.
+Source and build instructions: https://github.com/ybouane/LibRaw-Wasm
+The copied worker/index/WASM files are unmodified npm distribution files.
+LibRaw itself is redistributed under its CDDL-1.0 option; see LIBRAW-CDDL.txt.
+LibRaw 0.22.1 source: https://github.com/LibRaw/LibRaw/tree/0.22.1
+Little CMS source/license: https://github.com/mm2/Little-CMS (MIT).
+IJG JPEG dependency: Independent JPEG Group's software (IJG license;
+see LIBJPEG-README.txt, LEGAL ISSUES). The accompanying README is the
+upstream 9a license text; the Emscripten 5.0.7 port uses JPEG 9f.
+Emscripten runtime source/license: https://github.com/emscripten-core/emscripten/tree/5.0.7
+
+This software is based in part on the work of the Independent JPEG Group.

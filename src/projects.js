@@ -1,3 +1,5 @@
+import { validatePath } from "./bezier.js";
+import { validateGroups } from "./layer-groups.js";
 import { validateEffect } from "./imaging.js";
 const blends = new Set([
   "source-over",
@@ -22,7 +24,7 @@ export function validateProject(value) {
   if (
     !value ||
     value.format !== "prism-project" ||
-    ![1, 2].includes(value.version)
+    ![1, 2, 3].includes(value.version)
   )
     throw new Error("This is not a supported Prism project.");
   const { width, height, layers, adjustments } = value;
@@ -85,25 +87,13 @@ export function validateProject(value) {
           "This filter cannot be stored as an editable adjustment layer",
         );
     }
+    if (l.groups !== undefined) validateGroups(l.groups);
     if (
       l.group !== undefined &&
       (typeof l.group !== "string" || l.group.length > 200)
     )
       throw new Error("Invalid layer group.");
-    if (
-      l.path !== undefined &&
-      (!Array.isArray(l.path) ||
-        l.path.length > 1000 ||
-        !l.path.every(
-          (p) =>
-            p &&
-            Number.isFinite(p.x) &&
-            Number.isFinite(p.y) &&
-            Math.abs(p.x) <= 100000 &&
-            Math.abs(p.y) <= 100000,
-        ))
-    )
-      throw new Error("Invalid saved path.");
+    if (l.path !== undefined) validatePath(l.path);
   }
   if (
     !adjustments ||
@@ -133,7 +123,7 @@ export function serializeProject({
 }) {
   const data = {
     format: "prism-project",
-    version: 2,
+    version: 3,
     name: name || "Untitled",
     width: canvas.width,
     height: canvas.height,
@@ -154,7 +144,13 @@ export function serializeProject({
         ? { kind: "adjustment", effect: { ...l.effect } }
         : {}),
       ...(l.group ? { group: l.group } : {}),
-      ...(l.path ? { path: l.path.map((p) => ({ ...p })) } : {}),
+      ...(l.groups ? { groups: l.groups.map((g) => ({ ...g })) } : {}),
+      ...(l.path
+        ? {
+            path: l.path.map((p) => ({ ...p })),
+            pathClosed: l.pathClosed !== false,
+          }
+        : {}),
     })),
   };
   validateProject(data);

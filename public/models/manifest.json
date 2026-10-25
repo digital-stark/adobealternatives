@@ -1,0 +1,29 @@
+{
+  "u2netp": {
+    "source": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2netp.onnx",
+    "upstreamMd5": "8e83ca70e441ab06c318d82300c84806",
+    "license": "Apache-2.0"
+  },
+  "migan": {
+    "source": "https://github.com/Sanster/models/releases/download/migan/migan_traced.pt",
+    "originalSha256": "038b82d90416f1d1af232486d76d07665aecdd988e0f16090b1e11a61820b800",
+    "conversion": "scripts/export-migan.py; torch 2.5.1+cpu; opset 17; input [1,4,512,512]",
+    "license": "MIT"
+  },
+  "raw": {
+    "package": "libraw-wasm@1.6.0",
+    "source": "https://github.com/ybouane/LibRaw-Wasm",
+    "libraw": "0.22.1, CDDL-1.0",
+    "runtime": "Emscripten 5.0.7"
+  },
+  "inferenceRuntime": "onnxruntime-web@1.30.0, MIT",
+  "sha256": {
+    "models/u2netp.onnx": "309c8469258dda742793dce0ebea8e6dd393174f89934733ecc8b14c76f4ddd8",
+    "models/migan.onnx": "9c03340a116d66c083a6623682b4b843a7d2335cc571070d71593889ecc720ce",
+    "runtime/ort-wasm-simd-threaded.wasm": "3398c10d07d229bd91b364548e130e0e51a8e5704b88c7c083ebbeb78842dee2",
+    "runtime/ort-wasm-simd-threaded.mjs": "e13f7f94fc51b4ca72b12faeb1ee95f4ace6dfbc8939bc718aabdc0a27c4299b",
+    "raw/index.js": "3eb710aa5473c58c3b9dec74457b2ad2095d15b9a6df0056c96a3a011b720ca6",
+    "raw/worker.js": "af074781439ddf9c47fcbd3b3f115049ab884fdf61ec49ab358f28a8c42a4d4c",
+    "raw/libraw.wasm": "8947f7e668e488461c3e9defe7007583aa8477b4886aa603b36b407f2f0846ff"
+  }
+}

@@ -262,6 +262,7 @@ test("content-aware move prepares a masked local request and preserves original 
   await page.locator("#wand-tolerance").fill("0");
   await clickAt(page, 20, 40);
   await menu(page, "Filter", "Content-aware move (local AI)…");
+  await page.locator("[name=engine]").selectOption("external");
   await page.locator("[name=x]").fill("10");
   await page
     .locator("#book-form")

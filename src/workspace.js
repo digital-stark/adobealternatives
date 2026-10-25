@@ -260,10 +260,12 @@ export function initWorkspace({
     const query = $("#layer-filter").value.trim().toLowerCase();
     $$(".layer-row").forEach(
       (row) =>
-        (row.hidden = !row
-          .querySelector(".layer-name")
-          .textContent.toLowerCase()
-          .includes(query)),
+        (row.hidden =
+          row.dataset.groupCollapsed === "true" ||
+          !row
+            .querySelector(".layer-name")
+            .textContent.toLowerCase()
+            .includes(query)),
     );
   }
   function setBottomTab(name) {

@@ -165,10 +165,19 @@ app
           return new Response("Not found", { status: 404 });
         const response = await net.fetch(pathToFileURL(target).href);
         const headers = new Headers(response.headers);
+        headers.set("Cross-Origin-Opener-Policy", "same-origin");
+        headers.set("Cross-Origin-Embedder-Policy", "require-corp");
         headers.set(
           "Content-Security-Policy",
-          "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; frame-src 'none'",
+          "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'",
         );
+        // Emscripten embind builds decoder bindings with Function() inside the
+        // isolated RAW worker. Keep that exception off the document/AI workers.
+        if (url.pathname === "/raw/worker.js")
+          headers.set(
+            "Content-Security-Policy",
+            "default-src 'self'; script-src 'self' 'unsafe-eval'; connect-src 'self'; object-src 'none'",
+          );
         return new Response(response.body, {
           status: response.status,
           headers,

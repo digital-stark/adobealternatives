@@ -1,3 +1,21 @@
+import { inpaint } from "./inpaint-model.js";
+import {
+  brushDefaults,
+  brushPresets,
+  stampPositions,
+  drawBrushStamp,
+} from "./brush-engine.js";
+import {
+  clonePath,
+  pathCommands,
+  tracePath,
+  moveAnchor,
+  splitSegment,
+  transformPath,
+} from "./bezier.js";
+import { setGroupPath, groupPath } from "./layer-groups.js";
+import { decodeRaw, isRaw } from "./raw-decoder.js";
+import { selectSubject } from "./subject-model.js";
 import { imageDensityDataURL } from "./export-metadata.js";
 import {
   EFFECTS,
@@ -167,7 +185,7 @@ export function initBookTools(api) {
             );
             resizedContext.drawImage(l.canvas, l.x, l.y);
             if (l.path)
-              l.path = l.path.map((p) => ({
+              l.path = transformPath(l.path, (p) => ({
                 x: ((p.x + l.x) * v.width) / canvas.width,
                 y: ((p.y + l.y) * v.height) / canvas.height,
               }));
@@ -242,6 +260,11 @@ export function initBookTools(api) {
               c.getContext("2d").drawImage(l[key], l.x + dx, l.y + dy);
               l[key] = c;
             }
+          if (l.path)
+            l.path = transformPath(l.path, (p) => ({
+              x: p.x + l.x + dx,
+              y: p.y + l.y + dy,
+            }));
           l.x = l.y = 0;
         }
         api.replaceState({ width: v.width, height: v.height, selection: null });
@@ -279,9 +302,28 @@ export function initBookTools(api) {
               ctx.drawImage(l[key], 0, 0);
               l[key] = c;
             }
+          if (l.path) {
+            const matrix = new DOMMatrix()
+              .translate(w / 2, h / 2)
+              .rotate(v.angle)
+              .multiply(
+                new DOMMatrix([
+                  v.scaleX / 100,
+                  0,
+                  Math.tan((v.skew * Math.PI) / 180),
+                  v.scaleY / 100,
+                  0,
+                  0,
+                ]),
+              )
+              .translate(-w / 2, -h / 2);
+            l.path = transformPath(l.path, (p) => {
+              const t = matrix.transformPoint(p);
+              return { x: t.x, y: t.y };
+            });
+          }
           l.x = v.x;
           l.y = v.y;
-          delete l.path;
         });
       },
     );
@@ -309,6 +351,20 @@ export function initBookTools(api) {
             ctx.drawImage(l[key], l.x, l.y);
             l[key] = c;
           }
+        if (l.path) {
+          let matrix = new DOMMatrix().translate(newW / 2, newH / 2);
+          matrix = flip
+            ? matrix.scale(
+                flip === "horizontal" ? -1 : 1,
+                flip === "vertical" ? -1 : 1,
+              )
+            : matrix.rotate(turns * 90);
+          matrix = matrix.translate(-w / 2, -h / 2);
+          l.path = transformPath(l.path, (p) => {
+            const t = matrix.transformPoint({ x: p.x + l.x, y: p.y + l.y });
+            return { x: t.x, y: t.y };
+          });
+        }
         l.x = l.y = 0;
       }
       api.replaceState({ width: newW, height: newH, selection: null });
@@ -340,7 +396,64 @@ export function initBookTools(api) {
       api.replaceState({ activeId: l.id });
     });
   }
-  function loadFile(file) {
+  function openRaw(file) {
+    dialog(
+      "Develop camera RAW",
+      `${number("exposure", "Exposure (stops)", 0, -4, 4, 0.1)}<label>White balance <select name="wb"><option value="camera">Camera</option><option value="auto">Automatic</option><option value="daylight">Daylight</option></select></label><label><input type="checkbox" name="half"> Half-size decode</label><p>LibRaw demosaicing, sRGB conversion and highlight recovery run locally. The developed document uses RGB/8; the original RAW file stays unchanged.</p>`,
+      async (v) => {
+        api.toast("Decoding camera RAW…");
+        const decoded = await decodeRaw(file, {
+          expCorrec: true,
+          expShift: 2 ** Number(v.exposure),
+          expPreser: 0.8,
+          highlight: 2,
+          useCameraWb: v.wb === "camera",
+          useAutoWb: v.wb === "auto",
+          halfSize: !!v.half,
+        });
+        commit(() => {
+          const l = newLayer(file.name.slice(0, 180));
+          l.canvas = decoded.canvas;
+          api.replaceState({
+            width: l.canvas.width,
+            height: l.canvas.height,
+            layers: [l],
+            activeId: l.id,
+            selection: null,
+            ppi: 72,
+            name: file.name,
+            adjustments: { brightness: 100, contrast: 100, saturation: 100 },
+          });
+        });
+        api.toast("RAW developed locally");
+      },
+    );
+  }
+  async function automaticSubject(hair = false) {
+    if (inferenceBusy) return api.toast("A local inference is already running");
+    inferenceBusy = true;
+    const source = cloneCanvas(s().canvas);
+    api.toast("Running bundled U²-Net model on CPU…");
+    try {
+      const result = await selectSubject(source, hair);
+      if (s().canvas.toDataURL() !== source.toDataURL())
+        throw new Error(
+          "The document changed during inference. Retry on the current image.",
+        );
+      setSelection(result);
+      api.toast(
+        hair
+          ? "Subject selected with edge-aware soft hair matte; inspect and refine the edges."
+          : "Subject selected by the local model",
+      );
+    } catch (e) {
+      api.toast("Subject selection failed: " + e.message);
+    } finally {
+      inferenceBusy = false;
+    }
+  }
+  async function loadFile(file) {
+    if (isRaw(file)) return (await decodeRaw(file)).canvas;
     return new Promise((resolve, reject) => {
       const url = URL.createObjectURL(file),
         img = new Image();
@@ -352,7 +465,7 @@ export function initBookTools(api) {
         URL.revokeObjectURL(url);
         reject(
           new Error(
-            "This image format cannot be decoded. Use PNG, JPEG, or WebP; camera RAW needs an external decoder.",
+            "This image format could not be decoded. Try PNG, JPEG, WebP or a supported camera RAW format.",
           ),
         );
       };
@@ -491,10 +604,20 @@ export function initBookTools(api) {
     const index = s().layers.indexOf(assertEditable());
     if (index === s().layers.length - 1)
       return api.toast("No layer below the selected layer");
+    const members = [s().layers[index], s().layers[index + 1]],
+      path = groupPath(members[0]);
+    if (
+      path.map((g) => g.id).join("/") !==
+      groupPath(members[1])
+        .map((g) => g.id)
+        .join("/")
+    )
+      return api.toast("Move both layers into the same group before merging.");
     commit(() => {
       const l = newLayer(s().layers[index].name + " merged");
+      l.groups = path.map((g) => ({ ...g }));
       l.canvas = compositeLayers(
-        [s().layers[index], s().layers[index + 1]],
+        members.map((m) => ({ ...m, groups: [], group: undefined })),
         s().canvas.width,
         s().canvas.height,
       );
@@ -515,10 +638,15 @@ export function initBookTools(api) {
   }
   async function group() {
     const l = assertEditable(),
-      name = await api.askText("Group name", l.group || "Group 1");
+      name = await api.askText(
+        "Group path (use / for nested groups)",
+        groupPath(l)
+          .map((g) => g.name)
+          .join("/") || "Group 1",
+      );
     if (name?.trim())
       commit(() => {
-        l.group = name.trim().slice(0, 150);
+        setGroupPath(s().layers, l, name);
       });
   }
   function setMask() {
@@ -979,6 +1107,95 @@ export function initBookTools(api) {
       },
     );
   }
+  let brushSettings = { ...brushDefaults },
+    brushCarry = 0,
+    brushFresh = true,
+    customBrushTip = null;
+  const savedBrushes = (() => {
+    try {
+      return JSON.parse(localStorage.getItem("prism-brush-presets") || "{}");
+    } catch {
+      return {};
+    }
+  })();
+  function brushDialog() {
+    dialog(
+      "Brush dynamics",
+      `<label>Preset <select name="preset" id="advanced-preset"><option>Current</option>${Object.keys(
+        { ...brushPresets, ...savedBrushes },
+      )
+        .map((_, i) => `<option value="${i}"></option>`)
+        .join(
+          "",
+        )}</select></label>${number("spacing", "Spacing (% of diameter)", brushSettings.spacing * 100, 1, 300)}${number("scatter", "Scatter (% of diameter)", brushSettings.scatter * 100, 0, 400)}${number("sizeJitter", "Size jitter (%)", brushSettings.sizeJitter * 100, 0, 95)}${number("angle", "Angle", brushSettings.angle, -180, 180)}${number("angleJitter", "Angle jitter", brushSettings.angleJitter, 0, 180)}${number("roundness", "Roundness (%)", brushSettings.roundness * 100, 5, 100)}<label>Tip <select name="tip"><option value="round">Round</option><option value="grain">Charcoal grain</option><option value="leaf">Leaf</option><option value="custom">Imported PNG tip</option></select></label><label><input name="pressure" type="checkbox" ${brushSettings.pressure ? "checked" : ""}>Pen pressure controls size and flow</label><label><input name="tilt" type="checkbox" ${brushSettings.tilt ? "checked" : ""}>Pen tilt controls angle</label><label>Custom tip (PNG, black marks on white or transparency)<input id="brush-tip-file" type="file" accept="image/png"></label><label>Save preset name <input name="saveName" maxlength="60"></label><p>Built-in tips and saved settings work offline. Imported tip images are kept for this session.</p>`,
+      async (v) => {
+        let tip = customBrushTip;
+        const file = $("#brush-tip-file").files[0];
+        if (file) {
+          if (file.size > 2_000_000)
+            throw new Error("Use a PNG tip smaller than 2 MB.");
+          const img = await loadFile(file);
+          if (img.width > 1024 || img.height > 1024)
+            throw new Error("Tip dimensions must be at most 1024 pixels.");
+          tip = createCanvas(img.width, img.height);
+          const c = tip.getContext("2d");
+          c.drawImage(img, 0, 0);
+          const pixels = c.getImageData(0, 0, tip.width, tip.height);
+          for (let i = 0; i < pixels.data.length; i += 4) {
+            pixels.data[i + 3] *=
+              (255 -
+                (pixels.data[i] + pixels.data[i + 1] + pixels.data[i + 2]) /
+                  3) /
+              255;
+            pixels.data[i] = pixels.data[i + 1] = pixels.data[i + 2] = 255;
+          }
+          c.putImageData(pixels, 0, 0);
+        }
+        if (v.tip === "custom" && !tip)
+          throw new Error("Import a PNG tip first.");
+        customBrushTip = tip;
+        brushSettings = {
+          spacing: v.spacing / 100,
+          scatter: v.scatter / 100,
+          sizeJitter: v.sizeJitter / 100,
+          angle: v.angle,
+          angleJitter: v.angleJitter,
+          roundness: v.roundness / 100,
+          tip: v.tip,
+          pressure: v.pressure,
+          tilt: v.tilt,
+        };
+        if (v.saveName.trim()) {
+          if (
+            Object.keys(savedBrushes).length >= 30 &&
+            !savedBrushes[v.saveName.trim()]
+          )
+            throw new Error("Up to 30 presets can be saved.");
+          savedBrushes[v.saveName.trim()] = { ...brushSettings };
+          localStorage.setItem(
+            "prism-brush-presets",
+            JSON.stringify(savedBrushes),
+          );
+        }
+      },
+    );
+    const presets = Object.entries({ ...brushPresets, ...savedBrushes }),
+      select = $("#advanced-preset");
+    for (let i = 0; i < presets.length; i++)
+      select.options[i + 1].textContent = presets[i][0];
+    const form = $("#book-form");
+    form.elements.tip.value = brushSettings.tip;
+    select.onchange = () => {
+      const preset = presets[Number(select.value)]?.[1];
+      if (!preset) return;
+      for (const k of ["spacing", "scatter", "sizeJitter", "roundness"])
+        form.elements[k].value = preset[k] * 100;
+      for (const k of ["angle", "angleJitter", "tip"])
+        form.elements[k].value = preset[k];
+      for (const k of ["pressure", "tilt"])
+        form.elements[k].checked = preset[k];
+    };
+  }
   function paint(a, b) {
     const { active: l, canvas, selection, tool } = s();
     if (!l) return;
@@ -1033,10 +1250,35 @@ export function initBookTools(api) {
             b.y - (canvas.clonePoint.y + b.y - origin.y),
           );
         } else {
-          c.beginPath();
-          c.moveTo(a.x, a.y);
-          c.lineTo(b.x + 0.01, b.y + 0.01);
-          c.stroke();
+          c.filter = "none";
+          const spaced = stampPositions(
+            a,
+            b,
+            Math.max(0.5, radius * 2 * brushSettings.spacing),
+            brushCarry,
+          );
+          brushCarry = spaced.carry;
+          const points = brushFresh ? [a, ...spaced.points] : spaced.points;
+          brushFresh = false;
+          let tip = customBrushTip;
+          if (tip && brushSettings.tip === "custom") {
+            tip = cloneCanvas(tip);
+            const tc = tip.getContext("2d");
+            tc.globalCompositeOperation = "source-in";
+            tc.fillStyle = maskEdit ? "white" : hex;
+            tc.fillRect(0, 0, tip.width, tip.height);
+          }
+          for (const p of points)
+            drawBrushStamp(
+              c,
+              p,
+              radius * 2,
+              maskEdit ? "#ffffff" : hex,
+              opacity,
+              hardness,
+              brushSettings,
+              tip,
+            );
         }
       },
       erase ? "destination-out" : "source-over",
@@ -1131,6 +1373,9 @@ export function initBookTools(api) {
   let pathPoints = [],
     pathLayer = null,
     pathDrag = -1,
+    pathHandle = null,
+    pathNew = false,
+    pathClosed = true,
     stroke = null,
     quickOverlay = null,
     lastQuickSelection = null;
@@ -1177,6 +1422,8 @@ export function initBookTools(api) {
   s().canvas.addEventListener(
     "pointerdown",
     (e) => {
+      brushCarry = 0;
+      brushFresh = true;
       const { tool, active: l } = s(),
         p = world(e);
       if (tool === "Clone brush") {
@@ -1197,12 +1444,47 @@ export function initBookTools(api) {
       }
       if (tool === "Pen path") {
         e.stopImmediatePropagation();
-        pathDrag = pathPoints.findIndex(
-          (a) => Math.hypot(a.x - p.x, a.y - p.y) < 10 / s().zoom,
-        );
-        if (pathDrag < 0) {
-          pathPoints.push(p);
-          pathDrag = pathPoints.length - 1;
+        pathHandle = null;
+        pathNew = false;
+        for (let i = 0; i < pathPoints.length; i++)
+          for (const key of ["in", "out"])
+            if (
+              pathPoints[i][key] &&
+              Math.hypot(
+                pathPoints[i][key].x - p.x,
+                pathPoints[i][key].y - p.y,
+              ) <
+                9 / s().zoom
+            ) {
+              pathDrag = i;
+              pathHandle = key;
+            }
+        if (!pathHandle) {
+          pathDrag = pathPoints.findIndex(
+            (a) => Math.hypot(a.x - p.x, a.y - p.y) < 9 / s().zoom,
+          );
+          if (pathDrag >= 0 && e.ctrlKey) {
+            pathPoints.splice(pathDrag, 1);
+            pathDrag = -1;
+            sync();
+            return;
+          }
+          if (pathDrag >= 0 && e.altKey) {
+            delete pathPoints[pathDrag].in;
+            delete pathPoints[pathDrag].out;
+            sync();
+            return;
+          }
+          if (pathDrag === 0 && pathPoints.length >= 3 && e.shiftKey) {
+            pathClosed = true;
+            sync();
+            return;
+          }
+          if (pathDrag < 0) {
+            pathPoints.push(p);
+            pathDrag = pathPoints.length - 1;
+            pathNew = true;
+          }
         }
         s().canvas.setPointerCapture(e.pointerId);
         sync();
@@ -1249,7 +1531,17 @@ export function initBookTools(api) {
     (e) => {
       if (s().tool === "Pen path" && pathDrag >= 0 && e.buttons) {
         e.stopImmediatePropagation();
-        pathPoints[pathDrag] = world(e);
+        const p = world(e),
+          a = pathPoints[pathDrag];
+        if (pathHandle || pathNew) {
+          const key = pathHandle || "out";
+          a[key] = p;
+          if (!e.altKey)
+            a[key === "out" ? "in" : "out"] = {
+              x: 2 * a.x - p.x,
+              y: 2 * a.y - p.y,
+            };
+        } else moveAnchor(a, p.x, p.y);
         sync();
         return;
       }
@@ -1360,12 +1652,17 @@ export function initBookTools(api) {
       g.addColorStop(0, $("#color").value);
       g.addColorStop(1, $("#gradient-end").value);
       c.fillStyle = g;
+      c.save();
+      c.translate(-l.x, -l.y);
       c.beginPath();
-      c.moveTo(pathPoints[0].x, pathPoints[0].y);
-      for (const p of pathPoints.slice(1)) c.lineTo(p.x, p.y);
-      c.closePath();
+      tracePath(c, pathPoints, pathClosed);
       c.fill();
-      l.path = pathPoints.map((p) => ({ ...p }));
+      c.restore();
+      l.path = transformPath(pathPoints, (p) => ({
+        x: p.x - l.x,
+        y: p.y - l.y,
+      }));
+      l.pathClosed = pathClosed;
       api.replaceState({ activeId: l.id });
       pathPoints = [];
       pathLayer = null;
@@ -1535,7 +1832,7 @@ export function initBookTools(api) {
     if (!s().selection) return api.toast("Make a selection first");
     dialog(
       "Refine selection edges",
-      `${number("radius", "Feather radius (px)", 0, 0, 30)}${number("contrast", "Edge contrast (%)", 0, 0, 100)}${number("shift", "Grow / contract (px)", 0, -30, 30)}<p>Refines your existing pixel mask. Hair reconstruction and automatic subject understanding are not included.</p>`,
+      `${number("radius", "Feather radius (px)", 0, 0, 30)}${number("contrast", "Edge contrast (%)", 0, 0, 100)}${number("shift", "Grow / contract (px)", 0, -30, 30)}<p>Refines your existing pixel mask. For automatic subject/hair estimation, use Select subject and refine hair in the Select menu. This dialog edits the current mask manually.</p>`,
       async (values) => {
         const mask = selectedMask(),
           alpha = await runWorker(getMaskAlpha(mask), mask.width, mask.height, {
@@ -1545,15 +1842,52 @@ export function initBookTools(api) {
       },
     );
   }
+  let inferenceBusy = false;
+  async function removeWithModel() {
+    if (!s().selection) return api.toast("Select the object to remove first");
+    if (inferenceBusy) return api.toast("A local inference is already running");
+    inferenceBusy = true;
+    const before = s(),
+      source = cloneCanvas(before.canvas),
+      mask = selectedMask(),
+      ids = before.layers.map((l) => l.id).join(",");
+    api.toast("MI-GAN is reconstructing the selected area locally…");
+    try {
+      const output = await inpaint(source, mask);
+      if (
+        s().canvas.width !== source.width ||
+        s().canvas.height !== source.height ||
+        s()
+          .layers.map((l) => l.id)
+          .join(",") !== ids ||
+        s().canvas.toDataURL() !== source.toDataURL()
+      )
+        throw new Error(
+          "Document structure changed during inference. Retry on the current document.",
+        );
+      commit(() => {
+        const l = newLayer("MI-GAN content-aware removal");
+        l.canvas = output;
+        s().layers.unshift(l);
+        api.replaceState({ activeId: l.id, selection: null });
+      });
+      api.toast("Local neural inpainting complete");
+    } catch (e) {
+      api.toast("Inpainting failed: " + e.message);
+    } finally {
+      inferenceBusy = false;
+    }
+  }
   function contentAwareMove() {
     if (!s().selection) return api.toast("Select the object first");
     dialog(
       "Move selected object · local AI",
-      `${number("x", "Horizontal offset (px)", 50, -8000, 8000)}${number("y", "Vertical offset (px)", 0, -8000, 8000)}<p>The local AI engine reconstructs the source region. The selected original pixels are placed above the reconstructed background at the chosen offset. A separately installed, running inpainting model is required.</p>`,
+      `${number("x", "Horizontal offset (px)", 50, -8000, 8000)}${number("y", "Vertical offset (px)", 0, -8000, 8000)}<p>The local AI engine reconstructs the source region. The selected original pixels are placed above the reconstructed background at the chosen offset. The bundled MI-GAN model runs on CPU. Prompt-guided Stable Diffusion is also available through a separately installed local engine.</p><label>Engine <select name="engine"><option value="builtin">Bundled MI-GAN (offline)</option><option value="external">Local Stable Diffusion server</option></select></label>`,
       async (values) => {
         const { canvas } = s(),
           w = canvas.width,
           h = canvas.height,
+          originalPreview = canvas.toDataURL(),
           raw = compositeLayers(s().layers, w, h),
           object = cloneCanvas(raw),
           selection = selectedMask(),
@@ -1584,7 +1918,12 @@ export function initBookTools(api) {
           height: h,
         };
         let result;
-        if (api.desktop) result = await api.desktop.generate(payload);
+        if (values.engine === "builtin") {
+          api.toast("Running local MI-GAN inpainting…");
+          result = {
+            image: (await inpaint(raw, selection)).toDataURL("image/png"),
+          };
+        } else if (api.desktop) result = await api.desktop.generate(payload);
         else
           result = await (
             await fetch("/api/generate", {
@@ -1602,7 +1941,11 @@ export function initBookTools(api) {
             reject(new Error("Cannot decode local AI result"));
           background.src = result.image;
         });
-        if (canvas.width !== w || canvas.height !== h)
+        if (
+          canvas.width !== w ||
+          canvas.height !== h ||
+          canvas.toDataURL() !== originalPreview
+        )
           throw new Error(
             "The document changed during generation; retry the move",
           );
@@ -1631,14 +1974,14 @@ export function initBookTools(api) {
     [
       "Basic corrections",
       "44–60",
-      "Auto levels, crop, affine transform, gradients. Camera RAW and content-aware recompose need additional engines.",
+      "Auto levels, crop, affine transform, gradients and bundled LibRaw Camera RAW development. Content-aware recompose/seam carving remains open.",
       "Partial",
       () => effectsDialog("auto"),
     ],
     [
       "Layers",
       "62–74",
-      "Reorder, flat named groups, opacity/blends, masks, merge/flatten, editable adjustment layers. Nested groups and smart objects remain unsupported.",
+      "Nested isolated groups, group visibility/opacity/blends, layer masks, merge/flatten and editable adjustment layers. Smart objects remain unsupported.",
       "Partial",
       () => api.chooseTool("Move"),
     ],
@@ -1652,7 +1995,7 @@ export function initBookTools(api) {
     [
       "Retouching",
       "86–98",
-      "Clone, unsharp mask, dodge/burn, local repair and masked adjustments. Content-aware removal uses a separately installed local AI engine.",
+      "Clone, unsharp mask, dodge/burn, local repair and masked adjustments. Content-aware removal/move use bundled MI-GAN inference; prompt-guided generation can use local Stable Diffusion.",
       "Partial / local model for AI",
       () => effectsDialog("sharpen"),
     ],
@@ -1666,14 +2009,14 @@ export function initBookTools(api) {
     [
       "Selections",
       "114–126",
-      "Lasso, wand, additive/subtractive Quick selection, Quick Mask, invert, feather and manual edge refinements. Automatic subject/hair understanding is not implemented.",
+      "Lasso, wand, additive/subtractive Quick selection, Quick Mask, invert, feather and manual edge refinements. Bundled U²-Net subject selection and colour-guided soft hair-edge refinement are available; inspect difficult hair and backgrounds manually.",
       "Partial",
       () => api.chooseTool("Magic Wand"),
     ],
     [
       "Brushes",
       "128–140",
-      "Size/opacity/flow/hardness, history brush, raster painting and painterly photo effect. Adobe ABR/dynamic bristle brushes are not implemented.",
+      "Size/opacity/flow/hardness, stamped presets, PNG tips, spacing, scatter, size/angle jitter, roundness, pen pressure/tilt and saved settings. Adobe ABR and simulated bristle physics remain unsupported.",
       "Partial",
       () => api.chooseTool("Brush"),
     ],
@@ -1687,7 +2030,7 @@ export function initBookTools(api) {
     [
       "Creative projects",
       "156–173",
-      "Little-planet remap, photos + paths + blending, craft patterns, gradient polygon paths and mirrored kaleidoscope. These are reusable tools, not copies of the book artwork.",
+      "Little-planet remap, photos + paths + blending, craft patterns, editable cubic Bézier gradient paths and mirrored kaleidoscope. These are reusable tools, not copies of the book artwork.",
       "Implemented building blocks",
       () => creative("kaleidoscope"),
     ],
@@ -1803,7 +2146,7 @@ export function initBookTools(api) {
         overlay.id = "path-overlay";
         $("#canvas-wrap").append(overlay);
       }
-      overlay.innerHTML = `<svg viewBox="0 0 ${st.canvas.width} ${st.canvas.height}" width="100%" height="100%"><polyline points="${pathPoints.map((p) => p.x + "," + p.y).join(" ")}" fill="none" stroke="#65b4ff" stroke-width="1.5" vector-effect="non-scaling-stroke"/>${pathPoints.map((p) => `<circle cx="${p.x}" cy="${p.y}" r="${4 / st.zoom}" fill="white" stroke="#2684d0" stroke-width="${1 / st.zoom}"/>`).join("")}</svg>`;
+      overlay.innerHTML = `<svg viewBox="0 0 ${st.canvas.width} ${st.canvas.height}" width="100%" height="100%"><path d="${pathCommands(pathPoints, pathClosed)}" fill="none" stroke="#65b4ff" stroke-width="1.5" vector-effect="non-scaling-stroke"/>${pathPoints.map((p) => ["in", "out"].map((k) => (p[k] ? `<line x1="${p.x}" y1="${p.y}" x2="${p[k].x}" y2="${p[k].y}" stroke="#e6c178" stroke-width="${1 / st.zoom}"/><circle cx="${p[k].x}" cy="${p[k].y}" r="${3 / st.zoom}" fill="#e6c178"/>` : "")).join("") + `<rect x="${p.x - 4 / st.zoom}" y="${p.y - 4 / st.zoom}" width="${8 / st.zoom}" height="${8 / st.zoom}" fill="white" stroke="#2684d0" stroke-width="${1 / st.zoom}"/>`).join("")}</svg>`;
     } else $("#path-overlay")?.remove();
     const ppi = st.ppi || 72;
     $(".document-meta b").textContent = ppi + " pixels/inch";
@@ -1822,7 +2165,11 @@ export function initBookTools(api) {
       b.className = "path-entry";
       b.textContent = l.name + " · " + l.path.length + " points";
       b.onclick = () => {
-        pathPoints = l.path.map((p) => ({ ...p }));
+        pathPoints = transformPath(l.path, (p) => ({
+          x: p.x + l.x,
+          y: p.y + l.y,
+        }));
+        pathClosed = l.pathClosed !== false;
         pathLayer = l;
         api.chooseTool("Pen path");
         sync();
@@ -1830,16 +2177,73 @@ export function initBookTools(api) {
       content.append(b);
     }
   }
+  $(".generate-section").insertAdjacentHTML(
+    "afterbegin",
+    '<div class="bundled-ai"><span class="beta">BUILT-IN · OFFLINE CPU</span><button id="model-subject" class="outline full"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="7" r="4"/><path d="M4 22v-3a8 8 0 0116 0v3"/></svg> Select subject / hair</button><button id="model-remove" class="outline full"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 17L15 5l6 6L9 23H3zM11 9l6 6"/></svg> Remove selected object</button><p>Bundled U²-Net selection and MI-GAN reconstruction. Inspect fine edges and generated details.</p></div>',
+  );
+  $("#model-subject").onclick = () => automaticSubject(true);
+  $("#model-remove").onclick = () => removeWithModel();
+  api.menus.select.push(
+    ["Select subject (local model)", () => automaticSubject(false)],
+    ["Select subject and refine hair", () => automaticSubject(true)],
+  );
+  $("#file-input").accept +=
+    ",.dng,.cr2,.cr3,.nef,.nrw,.arw,.raf,.rw2,.orf,.pef,.raw";
   const paintOptions = $("#paint-options");
   paintOptions.insertAdjacentHTML(
     "beforeend",
-    `<label>Hardness <input id="brush-hardness" type="number" min="0" max="100" value="100"><span>%</span></label><label>Flow <input id="brush-flow" type="number" min="1" max="100" value="100"><span>%</span></label>`,
+    `<button id="brush-dynamics" class="outline">Brush settings</button><label>Hardness <input id="brush-hardness" type="number" min="0" max="100" value="100"><span>%</span></label><label>Flow <input id="brush-flow" type="number" min="1" max="100" value="100"><span>%</span></label>`,
   );
   $(".current-tool").insertAdjacentHTML(
     "afterend",
-    `<div class="tool-options" id="wand-options" hidden><label>Tolerance <input id="wand-tolerance" type="number" min="0" max="255" value="30"></label><label class="check"><input id="wand-contiguous" type="checkbox" checked>Contiguous</label></div><div class="tool-options" id="retouch-options" hidden><select id="sponge-mode" aria-label="Sponge mode"><option value="saturate">Saturate</option><option value="desaturate">Desaturate</option></select></div><div class="tool-options" id="gradient-options" hidden><select id="gradient-kind" aria-label="Gradient kind"><option value="linear">Linear</option><option value="radial">Radial</option></select><label>End <input id="gradient-end" type="color" value="#ffffff" aria-label="Gradient end colour"></label><button id="commit-path" class="outline" hidden>Fill path</button></div>`,
+    `<div class="tool-options" id="wand-options" hidden><label>Tolerance <input id="wand-tolerance" type="number" min="0" max="255" value="30"></label><label class="check"><input id="wand-contiguous" type="checkbox" checked>Contiguous</label></div><div class="tool-options" id="retouch-options" hidden><select id="sponge-mode" aria-label="Sponge mode"><option value="saturate">Saturate</option><option value="desaturate">Desaturate</option></select></div><div class="tool-options" id="gradient-options" hidden><select id="gradient-kind" aria-label="Gradient kind"><option value="linear">Linear</option><option value="radial">Radial</option></select><label>End <input id="gradient-end" type="color" value="#ffffff" aria-label="Gradient end colour"></label><button id="commit-path" class="outline" hidden>Fill path</button><button id="path-actions" class="outline">Path options</button></div>`,
   );
+  $("#brush-dynamics").onclick = brushDialog;
   $("#commit-path").onclick = finishPath;
+  $("#path-actions").onclick = () =>
+    dialog(
+      "Bézier path options",
+      `<p>Click-drag to create smooth handles. Drag an anchor to move it; drag a handle to reshape. Alt-drag breaks handle symmetry. Alt-click removes handles, Ctrl-click deletes an anchor. Escape cancels the draft.</p><label><input name="closed" type="checkbox" ${pathClosed ? "checked" : ""}>Closed path</label>${number("segment", "Segment to split (1-based; 0 skips)", 0, 0, Math.max(0, pathPoints.length - (pathClosed ? 0 : 1)))}<label>Action <select name="action"><option value="draft">Keep editing</option><option value="stroke">Stroke with foreground</option><option value="selection">Make selection</option></select></label>`,
+      (v) => {
+        pathClosed = v.closed;
+        if (v.segment > 0)
+          pathPoints = splitSegment(pathPoints, Number(v.segment) - 1);
+        if (v.action === "stroke" || v.action === "selection") {
+          if (pathPoints.length < 2)
+            throw new Error("Add at least two anchors.");
+          if (v.action === "selection") {
+            const mask = createCanvas(s().canvas.width, s().canvas.height),
+              c = mask.getContext("2d");
+            c.fillStyle = "white";
+            c.beginPath();
+            tracePath(c, pathPoints, true);
+            c.fill();
+            setSelection(mask);
+          } else
+            commit(() => {
+              const l = pathLayer || newLayer("Bézier stroke");
+              if (!pathLayer) s().layers.unshift(l);
+              const c = l.canvas.getContext("2d");
+              c.save();
+              c.translate(-l.x, -l.y);
+              c.strokeStyle = $("#color").value;
+              c.lineWidth = Number($("#brush-size").value);
+              c.lineCap = "round";
+              c.beginPath();
+              tracePath(c, pathPoints, pathClosed);
+              c.stroke();
+              c.restore();
+              l.path = transformPath(pathPoints, (p) => ({
+                x: p.x - l.x,
+                y: p.y - l.y,
+              }));
+              l.pathClosed = pathClosed;
+              api.replaceState({ activeId: l.id });
+            });
+        }
+        sync();
+      },
+    );
   const blends = {
     darken: "Darken",
     lighten: "Lighten",
@@ -1946,7 +2350,9 @@ export function initBookTools(api) {
       () =>
         report(() =>
           commit(() => {
-            delete assertEditable().group;
+            const l = assertEditable();
+            delete l.group;
+            delete l.groups;
           }),
         ),
     ],
@@ -1971,6 +2377,7 @@ export function initBookTools(api) {
     ...Object.entries(EFFECTS)
       .filter(([id]) => !tonal.has(id))
       .map(([id, e]) => [e.name + "…", () => effectsDialog(id)]),
+    ["Content-aware removal (offline model)", () => removeWithModel()],
     ["Content-aware removal (local AI)", () => localRemoval()],
     ["Content-aware move (local AI)…", contentAwareMove],
     ["Panosphere…", () => creative("panosphere")],
@@ -1986,6 +2393,7 @@ export function initBookTools(api) {
   learnButton.onclick = learning;
   $("#toggle-panels").before(learnButton);
   return {
+    openRaw,
     get editingMask() {
       return editingMask;
     },

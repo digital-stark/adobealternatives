@@ -1,34 +1,26 @@
-# Beginner implementation — completed local stages
+# Completed modifications — Prism 1.1.0
 
-The compressed 180-page PDF was readable. Its 57 lesson topics are mapped in [the full checklist](BEGINNER-BOOK-CHECKLIST.md). This pass implemented core editing workflows across the chapters; it did not complete every Photoshop/Elements feature or reproduce the supplied artwork.
+This revision addresses the six requested areas. It does not claim every Photoshop control or every recipe in the book is finished. The book remains reference material; neither the book nor its artwork is distributed.
 
-1. **Reference audit:** identified the actual 2016 eleventh-edition content, separated explanatory/exercise instructions from the user's request, and recorded all lesson starts. Did not act on publisher/watermark links, Adobe registration or asset-download directions.
-2. **Documents and delivery:** added New document, resolution/print-size controls, aspect-linked resampling, canvas anchors, placement, affine transforms, rotation/flips, internal/native clipboard, session image browsing and JPEG/WebP/A4 PDF export. PNG/JPEG density metadata is preserved as a chosen PPI; arbitrary original EXIF/ICC is not preserved.
-3. **Layer model:** added real masks and grayscale mask painting, reorder/merge/flatten, flat group labels/visibility, more blend modes and editable adjustment layers. Project v2 persists masks, numeric effect settings, groups, polygon anchors and resolution; v1 project reading remains supported.
-4. **Corrections:** added Levels/histogram, interactive fixed-anchor Curves, exposure/offset/gamma/contrast, whole-image and tonal-range Colour Balance, all nine RGB Channel Mixer coefficients, Black & White, master Hue/Saturation, Vibrance, Auto Levels and Shadows/Highlights. The three-anchor curve is piecewise linear; it is not full per-channel Photoshop Curves.
-5. **Selections and retouching:** added tolerance/contiguous Wand, additive/subtractive Quick selection, Quick Mask overlay, inverse/feather/manual grow-contract-contrast refinement, brush flow/hardness, mask painting, Dodge/Burn/Sponge, Blur/Sharpen, simple Repair and captured-source History brush. Source History defaults are limited to the current document. Advanced hair matting and semantic subject selection are absent.
-6. **Filters and creativity:** bundled an offline processing worker and preview UI. Added Gaussian-style/motion/spin/tilt-style blur, unsharp mask, median denoising, radial lighting, cutout/painterly approximations, panosphere and kaleidoscope remaps, original repeat craft patterns and editable polygon-gradient anchor workflows. Some effects are explicitly approximate, and raster filter settings are not smart filters.
-7. **Local AI workflows:** retained loopback-only generation and added a content-aware move controller that preserves original layers and sends the correct mask. Fixture tests verify transport/mask/layer handling only. No actual inpainting or segmentation model is bundled or was run.
-8. **Teaching and review:** added Help → Beginner workshop checklist and a ? dock button with practice actions and explicit availability states. Saved native desktop screenshots: [Curves](screenshots/beginner-curves.png), [workshop](screenshots/beginner-workshop.png).
-9. **Validation:** final production build passed; **17 unit tests and 15 browser tests passed**. Native Electron smoke passed both from the checkout and from the packaged Windows application's platform-independent `app.asar`, using Linux Electron and a virtual display. It exercised offline worker filters, project save/open, text, PNG/JPEG/WebP/PDF files, native clipboard and local-only AI configuration.
-10. **Local package:** built `release/Prism-Studio-Beginner-Preview-x64.exe` (about 153 MB) and `release/Beginner-Preview-SHA256SUMS.txt`. It is a Windows portable build, not a hosted download, and was not executed on a real Windows PC. At review, no GitHub push, tag, commit or release had been made. The user subsequently approved a source push; no new binary release is part of that push.
+1. **Real RAW development.** Added bundled LibRaw/WASM decoding, an exposure/white-balance/highlight development dialog, half-size decoding, source/output limits and useful decode failures. Verified an actual 32 MB Sony ARW (3120×2084 half-size output) and an original Bayer DNG fixture. The editor develops to RGB/8; high-bit-depth/ICC-preserving RAW editing remains outside this revision.
+2. **Automatic subject and hair-edge estimation.** Bundled checksum-verified U²-Net weights and ONNX Runtime. Added Select-menu commands and a person icon in the AI sidebar. Added edge-aware soft matte refinement, manual correction controls, and protection against applying inference to a changed document. Tested real network execution and soft-mask pixel variation, including a public-domain NASA portrait. This is saliency plus edge refinement, not a dedicated high-resolution hair-matting network or guaranteed hair reconstruction.
+3. **Advanced brushes.** Added Round, Charcoal, Foliage and Calligraphy presets, PNG stamp tips, continuous spacing across pointer events, scatter, size/angle jitter, roundness, pressure/tilt and locally saved settings. Selection/mask painting still uses actual alpha coverage. ABR parsing, physical bristle simulation and physical-tablet acceptance remain open.
+4. **Nested groups.** Added group paths up to 12 levels, isolated recursive compositing, parent opacity/blend/visibility, collapse controls, immutable undo metadata and saved project structure. Pixel tests verify two nested 50% groups produce 25% composite alpha rather than applying opacity separately to member layers. Empty folders and drag/drop tree moves are not implemented.
+5. **Cubic Bézier tools.** Added editable smooth/corner anchors, mirrored or independent handles, anchor movement/deletion, exact de Casteljau subdivision, open/closed paths, gradient fills, strokes and selection conversion. Handles follow document/affine transforms and survive save/open. Rendered pixels are raster; compound Boolean paths, CSH libraries and vector-only shape layers remain open.
+6. **Real learned inpainting.** Converted the checksum-pinned MIT MI-GAN checkpoint to bundled ONNX; added offline content-aware removal and default built-in content-aware move. CPU inference needs no Python, server, GPU, key or network. Tests exercise real model output and exact preservation of unselected pixels. The original stays below the output layer. The 512px network can produce artifacts on large holes; inspect results. Optional text-prompt Stable Diffusion still requires an external local engine and weights and remains transport-tested here.
+7. **Compatibility and packaging.** Added project v3, with v1/v2 import, source/model notices, checksum verification before builds, reproducible MI-GAN conversion instructions, CPU-first documentation, updated workshop guidance and Windows 1.1.0 release configuration. RAW-worker Emscripten binding generation has its own narrowly scoped CSP exception; the document still disallows JavaScript eval and renderer network access.
 
-## Material limits and next stages
+## Validation
 
-The topic checklist marks 30 topics with core coverage, 17 partial, 4 approximate, 2 conditional on a model, 2 remaining engine/capability gaps, and 2 reference-only entries. A core label is scoped by the row; it does not mean every subcontrol or recipe detail in Photoshop has been cloned.
+**20 unit tests and 20 production browser tests passed.** The native Electron smoke test also passed with real RAW/selection/inpainting execution while network access was disabled. Checks include pure geometry/group/spacing tests, production browser tests, real DNG decoding, real portrait selection and inpainting, nested group pixel compositing, cubic/project round trips, and native Electron offline model execution. The Windows x64 portable executable was cross-built locally (about 188 MB). Its packaged `app.asar` passed the full native offline smoke test with Linux Electron, including both real models and RAW decoding. One packaged-run Playwright debugger handshake timed out before the test started; a fresh run completed all assertions. Native cloud execution uses Linux Electron; it is not evidence of acceptance on the user's Windows PC or physical tablet.
 
-Remaining work includes a RAW/ICC/high-bit-depth pipeline, content-aware seam carving/recompose, real local-model installation/quality tests, automatic subject/hair selection, nested groups, smart objects, full Bezier and shape/layer-style editing, targeted colour ranges and Colorize/preset workflows, Photo Filter/High Pass, advanced brush imports/dynamics, and full Blur Gallery/Art History behaviour. These are deliberately not marked complete.
-
-The latest hardware reply was “Not sure,” so GPU acceleration is not assumed. The added core image operations run on the CPU. Choosing and validating external model/decoder engines on the user's Windows machine is a separate prerequisite for the remaining engine-dependent paths.
-
-## Reproduce locally
+Commands:
 
 ```sh
 npm run test:unit
 npm test
-npm run test:desktop
-npm run build
-npx electron-builder --win portable --x64 --config.portable.artifactName=Prism-Studio-Beginner-Preview-x64.exe
+DISPLAY=:99 npm run test:desktop  # Linux virtual-display runner
+npm run dist:win
 ```
 
-On headless Linux, the desktop smoke test needs a virtual X display. `PRISM_TEST_APP=/absolute/path/to/release/win-unpacked/resources/app.asar` can select the bundled app for the same smoke script. These commands do not publish anything.
+See [advanced controls and limits](ADVANCED-TOOLS.md) and the [updated book checklist](BEGINNER-BOOK-CHECKLIST.md) for the remaining scope. This report replaces the earlier source-only beginner-preview report; it does not relabel outstanding Photoshop capabilities as complete.

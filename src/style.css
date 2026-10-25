@@ -383,3 +383,4 @@ kbd { font-size: 9px; padding: 3px 5px; background: #242424; border: 1px solid #
 .gallery-card strong { font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
 .gallery-card input { min-width:0;background:#222;color:#eee;border:1px solid #666;padding:4px;font-size:10px }
 .mask-thumb.active { outline:2px solid #84bfff;outline-offset:1px }
+.bundled-ai {border-bottom:1px solid #484848;padding:0 0 12px;margin:0 0 14px}.bundled-ai button{display:flex;gap:8px;align-items:center;justify-content:center;margin:8px 0}.bundled-ai p{font-size:11px;line-height:1.5;color:#aaa}.layer-row[hidden],.layer-group-header[hidden]{display:none!important}.layer-group-header button{color:inherit;background:none;border:0;font-size:11px;cursor:pointer}

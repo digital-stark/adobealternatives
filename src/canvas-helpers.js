@@ -1,3 +1,4 @@
+import { groupTree } from "./layer-groups.js";
 import { processPixels } from "./imaging.js";
 export const createCanvas = (width, height) => {
   const c = document.createElement("canvas");
@@ -14,6 +15,12 @@ export function cloneCanvas(canvas) {
 export function snapshotLayers(layers) {
   return layers.map((l) => ({
     ...l,
+    groups: l.groups?.map((g) => ({ ...g })),
+    path: l.path?.map((p) => ({
+      ...p,
+      in: p.in ? { ...p.in } : undefined,
+      out: p.out ? { ...p.out } : undefined,
+    })),
     canvas: cloneCanvas(l.canvas),
     mask: cloneCanvas(l.mask),
     effect: l.effect ? { ...l.effect } : undefined,
@@ -93,31 +100,49 @@ export function renderLayer(layer, width, height) {
 export function compositeLayers(layers, width, height) {
   const result = createCanvas(width, height),
     ctx = result.getContext("2d", { willReadFrequently: true });
-  for (const l of [...layers].reverse()) {
-    if (!l.visible) continue;
-    if (l.kind === "adjustment" && l.effect) {
-      const before = ctx.getImageData(0, 0, width, height),
-        after = processPixels(before.data, width, height, l.effect),
-        mask = l.mask ? renderMask(l, width, height) : null;
-      for (let i = 0; i < after.length; i += 4) {
-        const strength = l.opacity * (mask ? mask[i + 3] / 255 : 1);
-        for (let c = 0; c < 3; c++)
-          before.data[i + c] =
-            before.data[i + c] * (1 - strength) + after[i + c] * strength;
+  function drawNodes(nodes, ctx) {
+    for (const node of [...nodes].reverse()) {
+      if (node.group) {
+        if (!node.group.visible) continue;
+        const isolated = createCanvas(width, height),
+          ic = isolated.getContext("2d", { willReadFrequently: true });
+        drawNodes(node.children, ic);
+        ctx.save();
+        ctx.globalAlpha = node.group.opacity;
+        ctx.globalCompositeOperation = node.group.blend;
+        ctx.drawImage(isolated, 0, 0);
+        ctx.restore();
+        continue;
       }
-      ctx.putImageData(before, 0, 0);
-      continue;
+      const l = node.layer;
+      if (!l.visible) continue;
+      if (l.kind === "adjustment" && l.effect) {
+        ctx.globalAlpha = 1;
+        ctx.globalCompositeOperation = "source-over";
+        const before = ctx.getImageData(0, 0, width, height),
+          after = processPixels(before.data, width, height, l.effect),
+          mask = l.mask ? renderMask(l, width, height) : null;
+        for (let i = 0; i < after.length; i += 4) {
+          const strength = l.opacity * (mask ? mask[i + 3] / 255 : 1);
+          for (let c = 0; c < 3; c++)
+            before.data[i + c] =
+              before.data[i + c] * (1 - strength) + after[i + c] * strength;
+        }
+        ctx.putImageData(before, 0, 0);
+        continue;
+      }
+      ctx.globalAlpha = l.opacity;
+      ctx.globalCompositeOperation = l.blend;
+      ctx.drawImage(
+        l.mask ? renderLayer(l, width, height) : l.canvas,
+        l.mask ? 0 : l.x,
+        l.mask ? 0 : l.y,
+      );
     }
-    ctx.globalAlpha = l.opacity;
-    ctx.globalCompositeOperation = l.blend;
-    ctx.drawImage(
-      l.mask ? renderLayer(l, width, height) : l.canvas,
-      l.mask ? 0 : l.x,
-      l.mask ? 0 : l.y,
-    );
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = "source-over";
   }
-  ctx.globalAlpha = 1;
-  ctx.globalCompositeOperation = "source-over";
+  drawNodes(groupTree(layers), ctx);
   return result;
 }
 function renderMask(layer, width, height) {
