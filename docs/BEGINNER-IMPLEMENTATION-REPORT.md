@@ -12,7 +12,7 @@ This revision addresses the six requested areas. It does not claim every Photosh
 
 ## Validation
 
-**20 unit tests and 20 production browser tests passed.** The native Electron smoke test also passed with real RAW/selection/inpainting execution while network access was disabled. Checks include pure geometry/group/spacing tests, production browser tests, real DNG decoding, real portrait selection and inpainting, nested group pixel compositing, cubic/project round trips, and native Electron offline model execution. The Windows x64 portable executable was cross-built locally (about 188 MB). Its packaged `app.asar` passed the full native offline smoke test with Linux Electron, including both real models and RAW decoding. One packaged-run Playwright debugger handshake timed out before the test started; a fresh run completed all assertions. Native cloud execution uses Linux Electron; it is not evidence of acceptance on the user's Windows PC or physical tablet.
+**20 unit tests and 20 production browser tests passed.** The native Electron smoke test also passed with real RAW/selection/inpainting execution while network access was disabled. Checks include pure geometry/group/spacing tests, production browser tests, real DNG decoding, real portrait selection and inpainting, nested group pixel compositing, cubic/project round trips, and native Electron offline model execution. The Windows x64 portable executable was cross-built locally (about 188 MB). Its packaged `app.asar` passed the full native offline smoke test with Linux Electron, including both real models and RAW decoding. One packaged-run Playwright debugger handshake timed out before the test started; a fresh run completed all assertions. The same 20 unit tests, 20 browser tests, native desktop smoke test, Windows portable build and checksum/artifact upload also passed on a Windows GitHub Actions runner: [Windows validation and download](https://github.com/digital-stark/adobealternatives/actions/runs/40219311425). This verifies native Windows execution, while acceptance on the user's own PC and physical tablet remains outstanding.
 
 Commands:
 
@@ -24,3 +24,5 @@ npm run dist:win
 ```
 
 See [advanced controls and limits](ADVANCED-TOOLS.md) and the [updated book checklist](BEGINNER-BOOK-CHECKLIST.md) for the remaining scope. This report replaces the earlier source-only beginner-preview report; it does not relabel outstanding Photoshop capabilities as complete.
+
+Windows CI initially caught CRLF conversion of a vendored runtime file. `.gitattributes` now preserves all checksum-verified runtime/decoder bytes; a local `core.autocrlf=true` checkout and the Windows rerun both passed.

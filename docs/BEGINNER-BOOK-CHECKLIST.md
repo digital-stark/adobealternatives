@@ -105,7 +105,7 @@ Bundled selection and inpainting are real CPU model inference. Prompt-guided Sta
 - Use **Image → Adjustments & filters** and **Filter** for the new effects.
 - Save editable work as `.prism`; **v3 projects need Prism 1.1.0**. Older v1/v2 projects open in it. Older builds cannot read v3, which prevents silent loss of nested groups and cubic handles.
 - Ordinary editing, filters and project files use bundled resources and CPU processing without internet. Browser test mode bootstraps local assets before disconnecting; the installed desktop uses the bundled `prism://app/` assets directly.
-- Native desktop tests run in Linux with a virtual display. The Windows package is cross-built and its platform-independent application assets are exercised using Linux Electron. A real Windows PC and physical tablet still need acceptance testing.
+- Native desktop tests passed on Linux with a virtual display and on a Windows GitHub Actions runner, including real offline RAW/model execution. The Windows portable build and artifact upload passed. The user’s own PC and physical tablet still need acceptance testing.
 
 ## Evidence
 

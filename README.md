@@ -44,7 +44,7 @@ Prism sends an opaque black/white inpainting mask (white = regenerate, black = p
 
 ## Download delivery
 
-Workspace file links are not hosted release downloads. The Windows executable in this cloud workspace is about 153 MB; a link to its local path does not establish that the chat can transfer it.
+Workspace file links are not hosted release downloads. The Windows executable in this cloud workspace is about 188 MB; a link to its local path does not establish that the chat can transfer it.
 
 The prepared `.github/workflows/windows-release.yml` workflow builds and tests on a Windows runner, uploads a downloadable Actions artifact, and can publish the portable executable and SHA-256 checksum as GitHub Release assets. A main-branch push runs Windows tests and uploads a build artifact. A release tag starts a published release build. A version tag push publishes a release; a manual run uploads an artifact by default and publishes only when its Publish option is selected. Publication requires working GitHub Actions. Public-repository releases are public downloads; private-repository releases require repository access.
 
@@ -69,7 +69,7 @@ To build a Windows installer on a Windows build machine:
 npm run dist:installer
 ```
 
-Outputs are written under `release/`. Packages are unsigned. The portable Windows artifact was built in Linux; it still needs acceptance testing on a real Windows PC. The native Electron runtime, offline editing, and file operations were tested in Linux.
+Outputs are written under `release/`. Packages are unsigned. The portable Windows artifact was built in Linux and on a Windows GitHub Actions runner. Native offline editing, RAW decoding, both learned models, clipboard and file operations passed on Windows CI and Linux. The user’s own PC and physical tablet still need acceptance testing.
 
 The optional browser development workflow remains available through `npm run dev`, serving the editor on `http://127.0.0.1:3000`. It uses the same local-only AI adapter. The installed desktop application neither starts nor needs this server.
 
@@ -93,3 +93,5 @@ Paint, erase, sample colors, add rasterized text/rectangles, draw gradients, mov
 Fonts are bundled from Fontsource (DM Sans and Manrope, SIL Open Font License); icons are Lucide (ISC). Font license files are included in the Windows app's `resources/licenses/` directory. The bundled coastal sample is from [dharmx/walls](https://github.com/dharmx/walls/blob/main/nature/a_beach_with_waves_and_cliffs.jpg); replace it with your own licensed image before public distribution. No assets are downloaded at application startup.
 
 Bundled inference uses ONNX Runtime Web (MIT), U²-Net (Apache-2.0) and MI-GAN (MIT). RAW development uses LibRaw-Wasm (ISC), LibRaw (CDDL option), Little CMS (MIT) and IJG JPEG. Sources, conversion instructions and checksums are in [model documentation](docs/ADVANCED-TOOLS.md) and `public/models/manifest.json`; third-party notices ship in `resources/licenses/`. Decoder source is available at the upstream links in `licenses/LIBRAW-WASM-NOTICE.txt`.
+
+Validated Windows 1.1.0 build: [Actions run and downloadable artifact](https://github.com/digital-stark/adobealternatives/actions/runs/40219311425). This main-branch build is an Actions artifact; the older published GitHub Release is unchanged.
