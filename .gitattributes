@@ -1,0 +1,5 @@
+# Vendored decoder/runtime files are checksum-verified byte-for-byte.
+# Preserve their upstream bytes on Windows checkouts (core.autocrlf=true).
+public/raw/** -text
+public/runtime/** -text
+public/models/*.onnx -text
