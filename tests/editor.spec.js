@@ -1,0 +1,62 @@
+import { test, expect } from '@playwright/test';
+test('image editing, layers, history, selection, export and generation configuration', async ({ page }) => {
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.goto('/');
+ await expect(page.locator('.layer-row')).toHaveCount(2);
+ await expect(page.locator('#dimensions')).toHaveText('1800 × 1200 px');
+ await page.getByTitle('New layer',{exact:true}).click();
+ await expect(page.locator('.layer-row')).toHaveCount(3);
+ await page.locator('#undo').click();await expect(page.locator('.layer-row')).toHaveCount(2);
+ await page.locator('#redo').click();await expect(page.locator('.layer-row')).toHaveCount(3);
+ await page.getByRole('button',{name:'Brush',exact:true}).click();
+ const box=await page.locator('#canvas').boundingBox();
+ const before=await page.locator('#canvas').evaluate(c=>c.toDataURL());
+ await page.mouse.move(box.x+70,box.y+70);await page.mouse.down();await page.mouse.move(box.x+120,box.y+120,{steps:10});await page.mouse.up();
+ expect(await page.locator('#canvas').evaluate(c=>c.toDataURL())).not.toBe(before);
+ await page.getByRole('button',{name:'Marquee select',exact:true}).click();
+ await page.mouse.move(box.x+100,box.y+100);await page.mouse.down();await page.mouse.move(box.x+220,box.y+200);await page.mouse.up();
+ await expect(page.locator('#selection')).toBeVisible();await page.locator('#deselect').click();await expect(page.locator('#selection')).toBeHidden();
+ await page.getByRole('button',{name:'Adjustments',exact:true}).click();await page.locator('#brightness').fill('130');
+ expect(await page.locator('#brightness-value').textContent()).toBe('30');
+ const downloadPromise=page.waitForEvent('download');await page.locator('.export').click();const download=await downloadPromise;expect(download.suggestedFilename()).toMatch(/\.png$/);
+ await page.locator('[data-prompt]').first().click();await page.locator('#generate').click();
+ await expect(page.locator('#generation-message')).toContainText('local AI engine');
+ await page.getByRole('button',{name:'Properties',exact:true}).click();
+ await page.screenshot({path:test.info().outputPath('editor.png'),fullPage:true});
+ expect(errors).toEqual([]);
+});
+test('server rejects unavailable generation with a useful error',async({request})=>{
+ const status=await request.get('/api/status');expect(status.ok()).toBeTruthy();
+ const generation=await request.post('/api/generate',{data:{prompt:'test',image:'data:image/png;base64,aGVsbG8=',width:100,height:100}});
+ expect(generation.status()).toBe(503);expect((await generation.json()).error).toContain('local AI engine');
+});
+test('offline editing and editable project round trip require no remote resources',async({page,context})=>{
+ const remote=[];page.on('request',req=>{if(/^https?:/.test(req.url())&&!req.url().startsWith('http://127.0.0.1:3010'))remote.push(req.url());});
+ await page.goto('/');await expect(page.locator('.layer-row')).toHaveCount(2);await page.evaluate(()=>document.fonts.ready);
+ await context.setOffline(true);
+ await page.getByTitle('New layer',{exact:true}).click();
+ await page.getByRole('button',{name:'Brush',exact:true}).click();
+ const box=await page.locator('#canvas').boundingBox();await page.mouse.move(box.x+80,box.y+80);await page.mouse.down();await page.mouse.move(box.x+130,box.y+120,{steps:5});await page.mouse.up();
+ const edited=await page.locator('#canvas').evaluate(c=>c.toDataURL());
+ await page.getByRole('button',{name:'File',exact:true}).click();
+ const downloadPromise=page.waitForEvent('download');await page.getByRole('button',{name:'Save project…',exact:true}).click();
+ const download=await downloadPromise;expect(download.suggestedFilename()).toMatch(/\.prism$/);
+ const projectPath=test.info().outputPath('roundtrip.prism');await download.saveAs(projectPath);
+ await page.getByTitle('Delete selected layer',{exact:true}).click();await expect(page.locator('.layer-row')).toHaveCount(2);
+ await page.locator('#file-input').setInputFiles(projectPath);await expect(page.locator('.layer-row')).toHaveCount(3);
+ await expect(page.locator('#document-name')).toHaveText('roundtrip.prism');
+ expect(await page.locator('#canvas').evaluate(c=>c.toDataURL())).toBe(edited);
+ expect(remote).toEqual([]);
+});
+test('desktop bridge uses local generation and native saves, without cloud requests',async({page,context})=>{
+ await page.addInitScript(()=>{
+  window.__desktopCalls=[];
+  window.prismDesktop={offline:true,onCommand:()=>{},aiStatus:async()=>({available:true,model:'fixture-model'}),saveFile:async p=>{window.__desktopCalls.push({type:p.type,name:p.name});return true;},generate:async p=>{window.__desktopCalls.push({endpoint:p.endpoint,mask:p.mask});return {image:p.image};}};
+ });
+ await page.goto('/');await expect(page.locator('.layer-row')).toHaveCount(2);await page.evaluate(()=>document.fonts.ready);await context.setOffline(true);
+ await expect(page.locator('.saved span')).toHaveText('Offline desktop');
+ await page.locator('[data-prompt]').first().click();await page.locator('#generate').click();await expect(page.locator('.layer-row')).toHaveCount(3);
+ expect(await page.evaluate(()=>window.__desktopCalls[0].endpoint)).toBe('http://127.0.0.1:7860');
+ await page.locator('.export').click();await expect.poll(()=>page.evaluate(()=>window.__desktopCalls.at(-1).type)).toBe('png');
+ await page.locator('#ai-settings').click();await page.locator('#ai-address').fill('https://example.com');await page.locator('#connect-local-ai').click();await expect(page.locator('#ai-settings-status')).toContainText('local HTTP address');
+});
