@@ -19,7 +19,7 @@ test('image editing, layers, history, selection, export and generation configura
  await page.getByRole('button',{name:'Adjustments',exact:true}).click();await page.locator('#brightness').fill('130');
  expect(await page.locator('#brightness-value').textContent()).toBe('30');
  const downloadPromise=page.waitForEvent('download');await page.locator('.export').click();const download=await downloadPromise;expect(download.suggestedFilename()).toMatch(/\.png$/);
- await page.locator('[data-prompt]').first().click();await page.locator('#generate').click();
+ await page.locator('[data-flyout="generate"]').click();await page.locator('[data-prompt]').first().click();await page.locator('#generate').click();
  await expect(page.locator('#generation-message')).toContainText('local AI engine');
  await page.getByRole('button',{name:'Properties',exact:true}).click();
  await page.screenshot({path:test.info().outputPath('editor.png'),fullPage:true});
@@ -55,7 +55,7 @@ test('desktop bridge uses local generation and native saves, without cloud reque
  });
  await page.goto('/');await expect(page.locator('.layer-row')).toHaveCount(2);await page.evaluate(()=>document.fonts.ready);await context.setOffline(true);
  await expect(page.locator('.saved span')).toHaveText('Offline desktop');
- await page.locator('[data-prompt]').first().click();await page.locator('#generate').click();await expect(page.locator('.layer-row')).toHaveCount(3);
+ await page.locator('[data-flyout="generate"]').click();await page.locator('[data-prompt]').first().click();await page.locator('#generate').click();await expect(page.locator('.layer-row')).toHaveCount(3);
  expect(await page.evaluate(()=>window.__desktopCalls[0].endpoint)).toBe('http://127.0.0.1:7860');
  await page.locator('.export').click();await expect.poll(()=>page.evaluate(()=>window.__desktopCalls.at(-1).type)).toBe('png');
  await page.locator('#ai-settings').click();await page.locator('#ai-address').fill('https://example.com');await page.locator('#connect-local-ai').click();await expect(page.locator('#ai-settings-status')).toContainText('local HTTP address');

@@ -10,7 +10,7 @@
     "test": "playwright test",
     "desktop": "npm run build && electron .",
     "dist:win": "npm run build && electron-builder --win portable --x64",
-    "test:unit": "node --test tests/local-ai.test.mjs",
+    "test:unit": "node --test tests/*.test.mjs",
     "test:desktop": "npm run build && node tests/desktop.smoke.mjs",
     "dist:installer": "npm run build && electron-builder --win nsis --x64"
   },

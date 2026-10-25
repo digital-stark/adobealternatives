@@ -31,7 +31,18 @@ try{
  await page.getByRole('button',{name:'Text',exact:true}).click();
  const box=await page.locator('#canvas').boundingBox();await page.mouse.click(box.x+80,box.y+100);
  await page.locator('#text-entry').fill('Offline creativity');await page.locator('#text-confirm').click();await expect(page.locator('.layer-row')).toHaveCount(4);
- await page.locator('#ai-settings').click();await page.locator('#ai-address').fill('https://api.openai.com');await page.locator('#connect-local-ai').click();await expect(page.locator('#ai-settings-status')).toContainText('local HTTP address');
+ await page.locator('[data-flyout="generate"]').click();await page.locator('#ai-settings').click();await page.locator('#ai-address').fill('https://api.openai.com');await page.locator('#connect-local-ai').click();await expect(page.locator('#ai-settings-status')).toContainText('local HTTP address');
+
+ await page.locator('#close-modal').click();
+ await expect(page.locator('body')).toHaveAttribute('data-processing-ready','true');
+ await page.getByRole('button',{name:'Filter',exact:true}).click();await page.locator('#menu-popover').getByRole('button',{name:'Gaussian-style blur…',exact:true}).click();await page.locator('#effect-apply').click();await expect(page.locator('.layer-row')).toHaveCount(5);
+ for(const format of ['jpeg','webp','pdf']){
+  const target=path.join(directory,'native-export.'+(format==='jpeg'?'jpg':format));
+  await app.evaluate(({dialog},filePath)=>{dialog.showSaveDialog=async()=>({canceled:false,filePath});},target);
+  await page.getByRole('button',{name:'File',exact:true}).click();await page.locator('#menu-popover').getByRole('button',{name:'Export image…',exact:true}).click();await page.locator('[name=format]').selectOption(format);await page.locator('#book-form').getByRole('button',{name:'Apply',exact:true}).click();await expect(page.locator('#modal')).not.toBeVisible();
+  const bytes=await readFile(target);if(format==='jpeg')expect(bytes.subarray(0,2).toString('hex')).toBe('ffd8');if(format==='webp')expect(bytes.subarray(8,12).toString()).toBe('WEBP');if(format==='pdf')expect(bytes.subarray(0,4).toString()).toBe('%PDF');
+ }
+ await page.getByRole('button',{name:'Edit',exact:true}).click();await page.locator('#menu-popover').getByRole('button',{name:'Copy',exact:true}).click();expect(await page.evaluate(async()=>Boolean((await window.prismDesktop.pasteImage())?.startsWith('data:image/png;base64,')))).toBe(true);
  expect(errors).toEqual([]);
- console.log('Native Electron smoke passed: packaged assets, offline editing, native project save/open, PNG save, raster text, local-only AI settings.');
+ console.log('Native Electron smoke passed (worker filters, clipboard, JPEG/WebP/PDF included): packaged assets, offline editing, native project save/open, PNG save, raster text, local-only AI settings.');
 }finally{await app.evaluate(({app})=>app.exit(0));}

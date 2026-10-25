@@ -2,7 +2,11 @@
 
 Prism is a standalone Windows desktop image editor with a Photoshop-style workspace, icon toolbar, layers, and optional local generative AI. The packaged application includes its runtime, fonts, icons, and starter image. Editing does not require a browser, Node.js, a server, an account, an API key, or internet access on the user's PC.
 
-This is an initial alternative, not complete Photoshop parity. PSD files, smart objects, editable vector paths, editable text objects, layer groups, and professional print workflows are not implemented.
+This is an initial alternative, not complete Photoshop parity. PSD files, smart objects, full Bezier vector paths, editable text objects, nested layer groups, and professional print workflows are not implemented.
+
+## Beginner-workshop changes (not released)
+
+This source includes the interface rework and beginner-book features; they are not yet part of a published Windows release. See the [topic-by-topic beginner checklist](docs/BEGINNER-BOOK-CHECKLIST.md) for completed core workflows, approximations and remaining work, and the earlier [interface change log](docs/INTERFACE-REWORK.md). The current local preview is `release/Prism-Studio-Beginner-Preview-x64.exe`; it is not a hosted download. The existing GitHub release is unchanged. This is a staged implementation, not a claim that every lesson feature is finished.
 
 ## Use on Windows
 
@@ -12,9 +16,17 @@ Open `Prism-Studio-1.0.0-Portable-x64.exe` from `release/`. The portable app nee
 
 - **File → Open image or project** / **Ctrl+O** opens a local image or `.prism` project.
 - **File → Save project** / **Ctrl+S** writes an editable `.prism` file containing layers, positions, opacity, visibility, blend modes, and image adjustments.
-- **Export** / **Ctrl+Shift+E** writes a flattened PNG.
+- **Export** / **Ctrl+Shift+E** writes a flattened PNG; File → Export image also provides JPEG/WebP and a desktop A4 PDF.
 - Save your project to keep your changes between launches. Edits are held in memory until saved; closing an unsaved desktop document asks for confirmation.
 - Native file dialogs let you choose local save locations.
+
+## Beginner tools and project files
+
+Use **Help → Beginner workshop checklist** (or the **?** dock button) to practise the new tools. File provides New, Place, Local image browser, project saves and exports. Edit has clipboard and affine transforms. Image has image/canvas sizing, rotation, and the adjustment/filter dialog. Layer has reorder, merge/flatten, flat groups, masks, and editable adjustments. Select has Wand, Quick selection, Quick Mask and manual edge refinement. Filter includes the implemented blur/retouch/creative operations and conditional local-AI content-aware workflows.
+
+New `.prism` files use **version 2**, retaining masks, adjustment settings, group labels, polygon path points and resolution. Version 1 files remain readable. The original published app cannot read v2 files. PNG/JPEG export embeds chosen PPI; import reads common PNG/JFIF density headers. Browser decoders/encoders do not preserve arbitrary original EXIF/ICC metadata; this is an RGB/8 editor.
+
+Some filters are explicitly labelled approximations. Curves has three fixed interior anchors and a piecewise-linear composite curve. Groups are flat; polygon paths rasterize their gradient fill and keep editable anchor metadata. The session image browser is not a permanent photo catalogue. See the checklist for the full limits rather than assuming Photoshop parity.
 
 ## Offline generative fill and expand
 
