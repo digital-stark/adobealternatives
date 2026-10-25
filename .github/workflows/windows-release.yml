@@ -41,7 +41,16 @@ jobs:
       - run: npm ci
       - run: npx playwright install chromium
       - run: npm run test:unit
-      - run: npm test
+      - name: Browser tests
+        shell: pwsh
+        run: |
+          npm test 2>&1 | Tee-Object -FilePath browser-tests.log
+          $testExit = $LASTEXITCODE
+          if ($testExit -ne 0) {
+            $logTail = (Get-Content browser-tests.log -Tail 60) -join '%0A'
+            Write-Output "::error title=Browser test output::$logTail"
+            exit $testExit
+          }
       - run: npm run test:desktop
       - run: npm run dist:win
       - name: Create checksum
